@@ -252,7 +252,8 @@ template<
          if (!owner) throw invalid_iterator();
          iterator tmp = *this;
          if (cur == nullptr) {
-           // end()-- -> max
+           if (!owner->root) throw invalid_iterator();
+           // end()-- -> max on non-empty
            cur = owner->maxNode(owner->root);
            return tmp;
          }
@@ -268,6 +269,7 @@ template<
        iterator &operator--() {
          if (!owner) throw invalid_iterator();
          if (cur == nullptr) {
+           if (!owner->root) throw invalid_iterator();
            cur = owner->maxNode(owner->root);
            return *this;
          }
@@ -349,14 +351,18 @@ template<
        const_iterator operator--(int) {
          if (!owner) throw invalid_iterator();
          const_iterator tmp = *this;
-         if (cur == nullptr) { cur = owner->maxNode(owner->root); return tmp; }
+         if (cur == nullptr) {
+           if (!owner->root) throw invalid_iterator();
+           cur = owner->maxNode(owner->root); return tmp; }
          if (cur == owner->minNode(owner->root)) throw invalid_iterator();
          cur = owner->predecessor(cur);
          return tmp;
        }
        const_iterator &operator--() {
          if (!owner) throw invalid_iterator();
-         if (cur == nullptr) { cur = owner->maxNode(owner->root); return *this; }
+         if (cur == nullptr) {
+           if (!owner->root) throw invalid_iterator();
+           cur = owner->maxNode(owner->root); return *this; }
          if (cur == owner->minNode(owner->root)) throw invalid_iterator();
          cur = owner->predecessor(cur);
          return *this;
