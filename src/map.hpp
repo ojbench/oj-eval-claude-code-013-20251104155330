@@ -51,7 +51,7 @@ template<
      x->right = y; y->parent = x;
      y->left = T2; if (T2) T2->parent = y;
      upd(y); upd(x);
-     x->parent = y->parent; // will be corrected by caller
+     x->parent = y->parent; // caller will re-hook
      return x;
    }
    Node *rotateLeft(Node *x) {
@@ -60,7 +60,7 @@ template<
      y->left = x; x->parent = y;
      x->right = T2; if (T2) T2->parent = x;
      upd(x); upd(y);
-     y->parent = x->parent; // will be corrected by caller
+     y->parent = x->parent; // caller will re-hook
      return y;
    }
 
@@ -69,7 +69,6 @@ template<
      int b = bf(node);
      if (b > 1) { // left heavy
        if (bf(node->left) < 0) {
-         // LR
          node->left = rotateLeft(node->left);
          if (node->left) node->left->parent = node;
        }
@@ -78,7 +77,6 @@ template<
        return newRoot;
      } else if (b < -1) { // right heavy
        if (bf(node->right) > 0) {
-         // RL
          node->right = rotateRight(node->right);
          if (node->right) node->right->parent = node;
        }
@@ -148,18 +146,16 @@ template<
        return node;
      }
      Node *res = rebalance(node);
-     // fix parent after rotations and set subtree root parent
      if (res->left) res->left->parent = res;
      if (res->right) res->right->parent = res;
      res->parent = parent;
      return res;
    }
 
-   // Erase by node pointer (handles const Key in value_type)
+   // Erase by node pointer using rotations to delete the target node itself (preserves neighbors' validity)
    Node *eraseByNode(Node *node, Node *target, bool &erased) {
      if (!node) return nullptr;
      if (node == target) {
-       // do NOT set erased/n here for two-children case
        if (!node->left || !node->right) {
          erased = true; --n;
          Node *child = node->left ? node->left : node->right;
@@ -168,15 +164,25 @@ template<
          delete node;
          return ret;
        } else {
-         // two children: copy successor's value into this node via placement-new, then delete successor
-         Node *s = minNode(node->right);
-         value_type tmp = s->value;
-         node->value.~value_type();
-         new (&node->value) value_type(tmp);
-         bool erased2 = false;
-         node->right = eraseByNode(node->right, s, erased2);
-         if (node->right) node->right->parent = node;
-         erased = true; // logical erase done
+         // rotate to push target down until it has at most one child
+         if (bf(node) >= 0) {
+           Node *newRoot = rotateRight(node);
+           // old 'node' becomes newRoot->right (same pointer 'target')
+           newRoot->right = eraseByNode(newRoot->right, target, erased);
+           if (newRoot->right) newRoot->right->parent = newRoot;
+           Node *res = rebalance(newRoot);
+           if (res->left) res->left->parent = res;
+           if (res->right) res->right->parent = res;
+           return res;
+         } else {
+           Node *newRoot = rotateLeft(node);
+           newRoot->left = eraseByNode(newRoot->left, target, erased);
+           if (newRoot->left) newRoot->left->parent = newRoot;
+           Node *res = rebalance(newRoot);
+           if (res->left) res->left->parent = res;
+           if (res->right) res->right->parent = res;
+           return res;
+         }
        }
      } else if (comp(target->value.first, node->value.first)) {
        node->left = eraseByNode(node->left, target, erased);
@@ -188,10 +194,6 @@ template<
      Node *res = rebalance(node);
      if (res->left) res->left->parent = res;
      if (res->right) res->right->parent = res;
-     // preserve original parent for subtree root
-     // NOTE: 'node' might have changed to 'res' after rotations
-     // The caller will hook res to its parent; here keep current parent
-     // (res->parent already points to old node->parent through linkage)
      return res;
    }
 
@@ -253,11 +255,9 @@ template<
          iterator tmp = *this;
          if (cur == nullptr) {
            if (!owner->root) throw invalid_iterator();
-           // end()-- -> max on non-empty
            cur = owner->maxNode(owner->root);
            return tmp;
          }
-         // check begin()
          if (cur == owner->minNode(owner->root)) throw invalid_iterator();
          cur = owner->predecessor(cur);
          return tmp;
@@ -310,8 +310,6 @@ template<
        friend class map;
    };
    class const_iterator {
-       // it should has similar member method as iterator.
-       //  and it should be able to construct from an iterator.
       private:
        Node *cur = nullptr;
        const map *owner = nullptr;
@@ -323,9 +321,6 @@ template<
        const_iterator(const const_iterator &other) : cur(other.cur), owner(other.owner) {}
 
        const_iterator(const iterator &other) : cur(other.cur), owner(other.owner) {}
-       // And other methods in iterator.
-       // And other methods in iterator.
-       // And other methods in iterator.
 
        const value_type &operator*() const {
          if (!owner || cur == nullptr) throw invalid_iterator();
